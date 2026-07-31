@@ -24,8 +24,8 @@
   .not-editable-tag{font-size:10px;color:var(--muted);margin-top:10px;font-style:italic;}
   .field{margin-bottom:16px;}
   .field label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
-  input[type=text], textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:14px;padding:12px;outline:none;}
-  input[type=text]:focus, textarea:focus{border-color:var(--accent);}
+  input[type=text], textarea, select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:14px;padding:12px;outline:none;}
+  input[type=text]:focus, textarea:focus, select:focus{border-color:var(--accent);}
   textarea{resize:vertical;min-height:70px;}
   button{width:100%;padding:14px;background:var(--accent);color:var(--bg);font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:1px;text-transform:uppercase;border:none;cursor:pointer;}
   button:disabled{opacity:.4;cursor:not-allowed;}
@@ -51,7 +51,9 @@
 
   <div class="field">
     <label for="guardia">Guardia</label>
-    <input type="text" id="guardia" placeholder="Nombre del guardia">
+    <select id="guardia">
+      <option value="">Selecciona tu nombre</option>
+    </select>
   </div>
 
   <div class="field">
@@ -96,8 +98,21 @@ async function init() {
   subtitulo.textContent = `Punto: ${checkpointId}`;
 
   try {
-    const res = await fetch(`${APPS_SCRIPT_URL}?accion=puestos`);
-    const puestos = await res.json();
+    const [resPuestos, resGuardias] = await Promise.all([
+      fetch(`${APPS_SCRIPT_URL}?accion=puestos`),
+      fetch(`${APPS_SCRIPT_URL}?accion=guardias`)
+    ]);
+    const puestos = await resPuestos.json();
+    const guardias = await resGuardias.json();
+
+    const guardiaSelect = document.getElementById('guardia');
+    guardias.forEach(nombre => {
+      const opt = document.createElement('option');
+      opt.value = nombre;
+      opt.textContent = nombre;
+      guardiaSelect.appendChild(opt);
+    });
+
     const match = puestos.find(p => p.Checkpoint === checkpointId);
 
     if (!match) {
@@ -120,13 +135,20 @@ async function init() {
 }
 
 btn.addEventListener('click', async () => {
+  const guardiaVal = document.getElementById('guardia').value.trim();
+  if (!guardiaVal) {
+    statusEl.textContent = 'Selecciona tu nombre antes de confirmar.';
+    statusEl.className = 'status error';
+    return;
+  }
+
   btn.disabled = true;
   btn.textContent = 'Enviando…';
   statusEl.className = 'status';
 
   const payload = {
     checkpoint: hiddenInput.value,
-    guardia: document.getElementById('guardia').value.trim(),
+    guardia: guardiaVal,
     notas: document.getElementById('notas').value.trim()
   };
 
