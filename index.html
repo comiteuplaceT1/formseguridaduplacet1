@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rondín — UPLACE</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+  :root {
+    --bg:#0a0c10; --surface:#10131a; --border:#1e2535;
+    --accent:#e8c84a; --ok:#2dd4a0; --danger:#f04f4f;
+    --text:#dde4f0; --muted:#5a6680;
+    --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100dvh;padding:20px 16px;font-size:14px;}
+  .card{max-width:480px;margin:0 auto;background:var(--surface);border:1px solid var(--border);padding:24px;}
+  h1{font-family:var(--mono);font-size:16px;color:var(--accent);margin-bottom:4px;}
+  .subtitle{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px;margin-bottom:20px;}
+  .instrucciones-box{background:#0b1220;border:1px solid var(--border);padding:16px;margin-bottom:20px;}
+  .instrucciones-box label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--ok);font-weight:600;margin-bottom:10px;}
+  #instrucciones-list{margin:0;padding-left:18px;line-height:1.6;}
+  #instrucciones-list li{margin-bottom:6px;}
+  .not-editable-tag{font-size:10px;color:var(--muted);margin-top:10px;font-style:italic;}
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  input[type=text], textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:14px;padding:12px;outline:none;}
+  input[type=text]:focus, textarea:focus{border-color:var(--accent);}
+  textarea{resize:vertical;min-height:70px;}
+  button{width:100%;padding:14px;background:var(--accent);color:var(--bg);font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:1px;text-transform:uppercase;border:none;cursor:pointer;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  .status{margin-top:14px;font-family:var(--mono);font-size:12px;text-align:center;display:none;}
+  .status.ok{color:var(--ok);display:block;}
+  .status.error{color:var(--danger);display:block;}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1 id="titulo">Rondín</h1>
+  <div class="subtitle" id="subtitulo">Cargando checkpoint…</div>
+
+  <!-- Campo oculto: se llena por JS, nunca visible ni editable, viaja en el POST -->
+  <input type="hidden" id="checkpoint" value="">
+
+  <div class="instrucciones-box" id="instrucciones-container">
+    <label>✅ Verificar</label>
+    <ul id="instrucciones-list"></ul>
+    <div class="not-editable-tag">Contenido informativo, no editable.</div>
+  </div>
+
+  <div class="field">
+    <label for="guardia">Guardia</label>
+    <input type="text" id="guardia" placeholder="Nombre del guardia">
+  </div>
+
+  <div class="field">
+    <label for="notas">Notas / Observaciones</label>
+    <textarea id="notas" placeholder="Opcional"></textarea>
+  </div>
+
+  <button id="btn-confirmar" disabled>Confirmar rondín</button>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────
+const APPS_SCRIPT_URL = ""; // pegar aquí la URL del deployment /exec una vez publicado
+
+// ── LEER CHECKPOINT DE LA URL ──────────────────────────────────────────
+const params = new URLSearchParams(window.location.search);
+const checkpointId = params.get('checkpoint') || '';
+
+const titulo = document.getElementById('titulo');
+const subtitulo = document.getElementById('subtitulo');
+const hiddenInput = document.getElementById('checkpoint');
+const listEl = document.getElementById('instrucciones-list');
+const container = document.getElementById('instrucciones-container');
+const btn = document.getElementById('btn-confirmar');
+const statusEl = document.getElementById('status');
+
+async function init() {
+  if (!checkpointId) {
+    titulo.textContent = 'Falta checkpoint';
+    subtitulo.textContent = 'La URL debe incluir ?checkpoint=Puesto-XX';
+    container.innerHTML = '<div style="color:var(--danger);font-size:13px">No se puede continuar sin un checkpoint válido.</div>';
+    return;
+  }
+
+  if (!APPS_SCRIPT_URL) {
+    subtitulo.textContent = 'APPS_SCRIPT_URL no configurado en el archivo.';
+    return;
+  }
+
+  hiddenInput.value = checkpointId;
+  subtitulo.textContent = `Punto: ${checkpointId}`;
+
+  try {
+    const res = await fetch(`${APPS_SCRIPT_URL}?accion=puestos`);
+    const puestos = await res.json();
+    const match = puestos.find(p => p.Checkpoint === checkpointId);
+
+    if (!match) {
+      titulo.textContent = 'Checkpoint no encontrado';
+      container.innerHTML = `<div style="color:var(--danger);font-size:13px">"${checkpointId}" no existe en el catálogo de Puestos.</div>`;
+      return;
+    }
+
+    titulo.textContent = `Rondín — ${match.Nombre}`;
+    match.Instrucciones.forEach(texto => {
+      const li = document.createElement('li');
+      li.textContent = texto;
+      listEl.appendChild(li);
+    });
+    btn.disabled = false;
+  } catch (err) {
+    subtitulo.textContent = 'Error cargando instrucciones.';
+    console.error(err);
+  }
+}
+
+btn.addEventListener('click', async () => {
+  btn.disabled = true;
+  btn.textContent = 'Enviando…';
+  statusEl.className = 'status';
+
+  const payload = {
+    checkpoint: hiddenInput.value,
+    guardia: document.getElementById('guardia').value.trim(),
+    notas: document.getElementById('notas').value.trim()
+  };
+
+  try {
+    // Sin header Content-Type explícito: evita el preflight CORS de Apps Script
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      statusEl.textContent = `✅ Rondín registrado — ${data.timestamp}`;
+      statusEl.className = 'status ok';
+      btn.textContent = 'Registrado';
+    } else {
+      throw new Error(data.error || 'Error desconocido');
+    }
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+    statusEl.className = 'status error';
+    btn.disabled = false;
+    btn.textContent = 'Confirmar rondín';
+  }
+});
+
+init();
+</script>
+</body>
+</html>
