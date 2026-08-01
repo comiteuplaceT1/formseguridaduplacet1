@@ -49,9 +49,21 @@
     <div class="not-editable-tag">Contenido informativo, no editable.</div>
   </div>
 
-  <div class="field">
+  <div class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:20px;">
+    <input type="checkbox" id="es-admin" style="width:16px;height:16px;accent-color:var(--accent);">
+    <label for="es-admin" style="margin:0;text-transform:none;letter-spacing:normal;font-size:13px;color:var(--text);cursor:pointer;">Registro de administración (No seleccionar si eres un guardia)</label>
+  </div>
+
+  <div class="field" id="field-guardia">
     <label for="guardia">Guardia</label>
     <select id="guardia">
+      <option value="">Selecciona tu nombre</option>
+    </select>
+  </div>
+
+  <div class="field" id="field-admin" style="display:none;">
+    <label for="admin">Administración</label>
+    <select id="admin">
       <option value="">Selecciona tu nombre</option>
     </select>
   </div>
@@ -67,7 +79,7 @@
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────────
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyh77_CIjqm17a_TRhOnxI8OjlzcApEGH74EBZuHCM2NTDeCWsv3CaSxicHrsIweASNhg/exec"; // pegar aquí la URL del deployment /exec una vez publicado
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby5T5PCv6Zh1l53Qt3yRDe2tRzSG3A3xWd2mehG-lZ9950DZC3Y81jNjljo7C71BcLCIw/exec"; // pegar aquí la URL del deployment /exec una vez publicado
 
 // ── LEER CHECKPOINT DE LA URL ──────────────────────────────────────────
 const params = new URLSearchParams(window.location.search);
@@ -99,7 +111,7 @@ async function init() {
 
   try {
     const res = await fetch(`${APPS_SCRIPT_URL}?accion=inicio`);
-    const { puestos, guardias } = await res.json();
+    const { puestos, guardias, administradores } = await res.json();
 
     const guardiaSelect = document.getElementById('guardia');
     guardias.forEach(nombre => {
@@ -107,6 +119,14 @@ async function init() {
       opt.value = nombre;
       opt.textContent = nombre;
       guardiaSelect.appendChild(opt);
+    });
+
+    const adminSelect = document.getElementById('admin');
+    (administradores || []).forEach(nombre => {
+      const opt = document.createElement('option');
+      opt.value = nombre;
+      opt.textContent = nombre;
+      adminSelect.appendChild(opt);
     });
 
     const match = puestos.find(p => p.Checkpoint === checkpointId);
@@ -130,9 +150,18 @@ async function init() {
   }
 }
 
+document.getElementById('es-admin').addEventListener('change', (e) => {
+  document.getElementById('field-guardia').style.display = e.target.checked ? 'none' : 'block';
+  document.getElementById('field-admin').style.display = e.target.checked ? 'block' : 'none';
+});
+
 btn.addEventListener('click', async () => {
-  const guardiaVal = document.getElementById('guardia').value.trim();
-  if (!guardiaVal) {
+  const esAdmin = document.getElementById('es-admin').checked;
+  const nombreVal = esAdmin
+    ? document.getElementById('admin').value.trim()
+    : document.getElementById('guardia').value.trim();
+
+  if (!nombreVal) {
     statusEl.textContent = 'Selecciona tu nombre antes de confirmar.';
     statusEl.className = 'status error';
     return;
@@ -144,7 +173,8 @@ btn.addEventListener('click', async () => {
 
   const payload = {
     checkpoint: hiddenInput.value,
-    guardia: guardiaVal,
+    guardia: nombreVal,
+    rol: esAdmin ? 'Administracion' : 'Guardia',
     notas: document.getElementById('notas').value.trim()
   };
 
