@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rondín — UPLACE</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
   :root {
     --bg:#0a0c10; --surface:#10131a; --border:#1e2535;
     --accent:#e8c84a; --ok:#2dd4a0; --danger:#f04f4f;
     --text:#dde4f0; --muted:#5a6680;
-    --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100dvh;padding:20px 16px;font-size:14px;}
@@ -67,7 +67,7 @@
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────────
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzOdhJSqK2NDf1xrYp6i13lDLnXgVhZqZJVEPkEbakAwZ3Jjvpnlfu9pgDixLsPVPT2SQ/exec"; // pegar aquí la URL del deployment /exec una vez publicado
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyh77_CIjqm17a_TRhOnxI8OjlzcApEGH74EBZuHCM2NTDeCWsv3CaSxicHrsIweASNhg/exec"; // pegar aquí la URL del deployment /exec una vez publicado
 
 // ── LEER CHECKPOINT DE LA URL ──────────────────────────────────────────
 const params = new URLSearchParams(window.location.search);
@@ -98,12 +98,8 @@ async function init() {
   subtitulo.textContent = `Punto: ${checkpointId}`;
 
   try {
-    const [resPuestos, resGuardias] = await Promise.all([
-      fetch(`${APPS_SCRIPT_URL}?accion=puestos`),
-      fetch(`${APPS_SCRIPT_URL}?accion=guardias`)
-    ]);
-    const puestos = await resPuestos.json();
-    const guardias = await resGuardias.json();
+    const res = await fetch(`${APPS_SCRIPT_URL}?accion=inicio`);
+    const { puestos, guardias } = await res.json();
 
     const guardiaSelect = document.getElementById('guardia');
     guardias.forEach(nombre => {
