@@ -139,7 +139,7 @@
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────────
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw96-scTLcTYPs9I8EsGjt3cDb3mz3PWQdMJFG_CoWCsj9EfCfU4_6Fm9OFmHIDZxdNuQ/exec"; // pegar aquí la URL del deployment /exec una vez publicado
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzcwGDXjiZiuvFPx04qvOBDLhoNCeQM5xqpC6FNkFBP0Z3zgxDjnEAw8kv_J516f6UYtg/exec"; // pegar aquí la URL del deployment /exec una vez publicado
 
 // ── LEER CHECKPOINT DE LA URL ──────────────────────────────────────────
 const params = new URLSearchParams(window.location.search);
@@ -242,6 +242,20 @@ document.getElementById('es-admin').addEventListener('change', (e) => {
   document.getElementById('field-admin').style.display = e.target.checked ? 'block' : 'none';
 });
 
+// GPS best-effort: no bloquea el envío si el guardia no da permiso, no hay
+// señal (común en cuartos técnicos/sótanos), o tarda demasiado. Es evidencia
+// de apoyo, no un candado — se guarda junto al registro para auditoría.
+function obtenerUbicacion() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { timeout: 4000, maximumAge: 60000 }
+    );
+  });
+}
+
 btn.addEventListener('click', async () => {
   const esAdmin = document.getElementById('es-admin').checked;
   const nombreVal = esAdmin
@@ -258,11 +272,15 @@ btn.addEventListener('click', async () => {
   btn.textContent = 'Enviando…';
   statusEl.className = 'status';
 
+  const ubicacion = await obtenerUbicacion();
+
   const payload = {
     checkpoint: hiddenInput.value,
     guardia: nombreVal,
     rol: esAdmin ? 'Administracion' : 'Guardia',
-    notas: document.getElementById('notas').value.trim()
+    notas: document.getElementById('notas').value.trim(),
+    lat: ubicacion ? ubicacion.lat : '',
+    lng: ubicacion ? ubicacion.lng : ''
   };
 
   try {
@@ -360,6 +378,13 @@ function nombreActual() {
 }
 
 document.getElementById('btn-abrir-reporte').addEventListener('click', () => {
+  if (!nombreActual()) {
+    statusEl.textContent = 'Selecciona tu nombre (arriba) antes de crear un reporte interno.';
+    statusEl.className = 'status error';
+    document.getElementById(document.getElementById('es-admin').checked ? 'admin' : 'guardia').focus();
+    return;
+  }
+
   // Sistema
   const selSistema = document.getElementById('r-sistema');
   selSistema.innerHTML = SISTEMAS_REPORTE.map(s => `<option value="${s}">${s}</option>`).join('');
