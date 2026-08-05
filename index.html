@@ -32,6 +32,18 @@
   .status{margin-top:14px;font-family:var(--mono);font-size:12px;text-align:center;display:none;}
   .status.ok{color:var(--ok);display:block;}
   .status.error{color:var(--danger);display:block;}
+  .btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border);margin-top:10px;}
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:flex-start;justify-content:center;padding:20px 16px;overflow-y:auto;z-index:100;}
+  .modal-overlay.show{display:flex;}
+  .modal-box{max-width:480px;width:100%;background:var(--surface);border:1px solid var(--border);padding:20px;margin-top:20px;}
+  .modal-box h2{font-family:var(--mono);font-size:14px;color:var(--accent);margin-bottom:4px;}
+  .modal-sub{font-size:11px;color:var(--muted);margin-bottom:16px;}
+  .modal-info-box{background:#0b1220;border:1px solid var(--border);padding:10px 12px;font-size:12px;color:var(--text);margin-bottom:16px;}
+  .modal-actions{display:flex;gap:8px;margin-top:16px;}
+  .modal-actions button{margin-top:0;}
+  input[type=file]{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-size:11px;padding:8px;}
+  #reporte-fotos-preview{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  #reporte-fotos-preview img{width:52px;height:52px;object-fit:cover;border:1px solid var(--border);}
 </style>
 </head>
 <body>
@@ -51,7 +63,7 @@
 
   <div class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:20px;">
     <input type="checkbox" id="es-admin" style="width:16px;height:16px;accent-color:var(--accent);">
-    <label for="es-admin" style="margin:0;text-transform:none;letter-spacing:normal;font-size:13px;color:var(--text);cursor:pointer;">Registro de administración (No seleccionar si eres un guardia)</label>
+    <label for="es-admin" style="margin:0;text-transform:none;letter-spacing:normal;font-size:13px;color:var(--text);cursor:pointer;">Registro de administración (no soy guardia)</label>
   </div>
 
   <div class="field" id="field-guardia">
@@ -74,12 +86,60 @@
   </div>
 
   <button id="btn-confirmar" disabled>Confirmar rondín</button>
+  <button id="btn-abrir-reporte" class="btn-secondary" type="button">📋 Registro de Reporte Interno</button>
   <div class="status" id="status"></div>
+</div>
+
+<!-- ═══ MODAL: Registro de Reporte Interno (mismo backend que el agente de mantenimiento) ═══ -->
+<div class="modal-overlay" id="modal-reporte">
+  <div class="modal-box">
+    <h2>📋 Registro de Reporte Interno</h2>
+    <div class="modal-sub">Se guarda directo en la bitácora de mantenimiento, marcado como levantado por Seguridad.</div>
+
+    <div class="field">
+      <label for="r-sistema">Sistema</label>
+      <select id="r-sistema"></select>
+    </div>
+    <div class="field">
+      <label for="r-equipo">Equipo*</label>
+      <input type="text" id="r-equipo" placeholder="Ej. Bomba hidroneumática, Puerta P6…">
+    </div>
+    <div class="field">
+      <label for="r-descripcion">Descripción*</label>
+      <textarea id="r-descripcion" placeholder="Describe el problema o el trabajo a realizar"></textarea>
+    </div>
+    <div class="field">
+      <label for="r-ubicacion">Ubicación*</label>
+      <input type="text" id="r-ubicacion">
+    </div>
+    <div class="field">
+      <label for="r-prioridad">Prioridad</label>
+      <select id="r-prioridad">
+        <option value="Baja">Baja</option>
+        <option value="Media" selected>Media</option>
+        <option value="Alta">Alta</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Fecha programada</label>
+      <div class="modal-info-box" id="r-fecha-info">—</div>
+    </div>
+    <div class="field">
+      <label for="r-fotos">Fotografías (opcional)</label>
+      <input type="file" id="r-fotos" accept="image/*" multiple capture="environment">
+      <div id="reporte-fotos-preview"></div>
+    </div>
+    <div class="status" id="reporte-status"></div>
+    <div class="modal-actions">
+      <button id="btn-cancelar-reporte" class="btn-secondary" type="button">Cancelar</button>
+      <button id="btn-crear-reporte" type="button">Crear reporte</button>
+    </div>
+  </div>
 </div>
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────────
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbykQan5V0WHMcekTG3eOC298GOw8JtTXiDIaQfBMNABg98MEg1_GSjK4oaR9n29VR8QJQ/exec"; // pegar aquí la URL del deployment /exec una vez publicado
+const APPS_SCRIPT_URL = ""; // pegar aquí la URL del deployment /exec una vez publicado
 
 // ── LEER CHECKPOINT DE LA URL ──────────────────────────────────────────
 const params = new URLSearchParams(window.location.search);
@@ -92,6 +152,48 @@ const listEl = document.getElementById('instrucciones-list');
 const container = document.getElementById('instrucciones-container');
 const btn = document.getElementById('btn-confirmar');
 const statusEl = document.getElementById('status');
+
+function renderInicio(data) {
+  const { puestos, guardias, administradores } = data;
+
+  const guardiaSelect = document.getElementById('guardia');
+  const adminSelect = document.getElementById('admin');
+
+  // Limpia opciones previas (menos la primera, "Selecciona tu nombre") por si
+  // esto corre dos veces (cache instantáneo + refresco de fondo).
+  [...guardiaSelect.querySelectorAll('option')].slice(1).forEach(o => o.remove());
+  [...adminSelect.querySelectorAll('option')].slice(1).forEach(o => o.remove());
+
+  guardias.forEach(nombre => {
+    const opt = document.createElement('option');
+    opt.value = nombre; opt.textContent = nombre;
+    guardiaSelect.appendChild(opt);
+  });
+  (administradores || []).forEach(nombre => {
+    const opt = document.createElement('option');
+    opt.value = nombre; opt.textContent = nombre;
+    adminSelect.appendChild(opt);
+  });
+
+  const match = puestos.find(p => p.Checkpoint === checkpointId);
+  if (!match) {
+    titulo.textContent = 'Checkpoint no encontrado';
+    container.innerHTML = `<div style="color:var(--danger);font-size:13px">"${checkpointId}" no existe en el catálogo de Puestos.</div>`;
+    return false;
+  }
+
+  titulo.textContent = `Rondín — ${match.Nombre}`;
+  listEl.innerHTML = '';
+  match.Instrucciones.forEach(texto => {
+    const li = document.createElement('li');
+    li.textContent = texto;
+    listEl.appendChild(li);
+  });
+  btn.disabled = false;
+  return true;
+}
+
+const CACHE_KEY = 'rondin_inicio_v1';
 
 async function init() {
   if (!checkpointId) {
@@ -109,44 +211,29 @@ async function init() {
   hiddenInput.value = checkpointId;
   subtitulo.textContent = `Punto: ${checkpointId}`;
 
+  // 1) Si hay datos guardados en este celular de una visita anterior, se
+  // pintan de inmediato — sin esperar red. Esto es lo que hace que se sienta
+  // instantáneo para un guardia que reabre el mismo link varias veces al día.
+  let yaRenderizado = false;
+  const cacheado = localStorage.getItem(CACHE_KEY);
+  if (cacheado) {
+    try { yaRenderizado = renderInicio(JSON.parse(cacheado)); } catch (e) { /* cache corrupto, ignorar */ }
+  }
+
+  // 2) Siempre se pide la versión fresca en segundo plano — actualiza el
+  // cache para la próxima vez, y si esta es la primera visita en este
+  // celular (sin cache todavía), esta es la que realmente pinta la pantalla.
   try {
     const res = await fetch(`${APPS_SCRIPT_URL}?accion=inicio`);
-    const { puestos, guardias, administradores } = await res.json();
-
-    const guardiaSelect = document.getElementById('guardia');
-    guardias.forEach(nombre => {
-      const opt = document.createElement('option');
-      opt.value = nombre;
-      opt.textContent = nombre;
-      guardiaSelect.appendChild(opt);
-    });
-
-    const adminSelect = document.getElementById('admin');
-    (administradores || []).forEach(nombre => {
-      const opt = document.createElement('option');
-      opt.value = nombre;
-      opt.textContent = nombre;
-      adminSelect.appendChild(opt);
-    });
-
-    const match = puestos.find(p => p.Checkpoint === checkpointId);
-
-    if (!match) {
-      titulo.textContent = 'Checkpoint no encontrado';
-      container.innerHTML = `<div style="color:var(--danger);font-size:13px">"${checkpointId}" no existe en el catálogo de Puestos.</div>`;
-      return;
-    }
-
-    titulo.textContent = `Rondín — ${match.Nombre}`;
-    match.Instrucciones.forEach(texto => {
-      const li = document.createElement('li');
-      li.textContent = texto;
-      listEl.appendChild(li);
-    });
-    btn.disabled = false;
+    const data = await res.json();
+    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+    if (!yaRenderizado) renderInicio(data);
   } catch (err) {
-    subtitulo.textContent = 'Error cargando instrucciones.';
-    console.error(err);
+    if (!yaRenderizado) {
+      subtitulo.textContent = 'Error cargando instrucciones.';
+      console.error(err);
+    }
+    // si ya se pintó desde cache, un error de red de fondo no afecta al guardia
   }
 }
 
@@ -202,6 +289,171 @@ btn.addEventListener('click', async () => {
 });
 
 init();
+
+// ══════════════════════════════════════════════════════════════════════════
+// MODAL: REGISTRO DE REPORTE INTERNO
+// Reutiliza el MISMO endpoint y el MISMO formato de payload que ya acepta el
+// backend del agente de mantenimiento — no requiere tocar ese Code.gs.
+// ══════════════════════════════════════════════════════════════════════════
+const URL_MANTENIMIENTO_PUENTE = "https://script.google.com/macros/s/AKfycbxo_RSEm9Y1OuUa0oPwt-zIwLV3K0F2uPq_qNs8ScJo73dDFdHp-SXPg0SdZ8lbmxH3jA/exec";
+
+const SISTEMAS_REPORTE = [
+  "Electricidad 110v y 220v",
+  "Plomeria Residencial y Comercial",
+  "Acabados: Pintura, tablaroca y resanes",
+  "Mantenimiento General"
+];
+
+const modalReporte = document.getElementById('modal-reporte');
+const reporteStatusEl = document.getElementById('reporte-status');
+let reporteFotos = [];
+
+// Siempre el martes de la semana SIGUIENTE (nunca el de esta semana, aunque
+// todavía no haya pasado) — coincide con la reunión de Administración + CV.
+function calcularMartesSiguienteSemana() {
+  const hoy = new Date();
+  const dia = hoy.getDay(); // 0=Dom..6=Sáb
+  const diffALunes = dia === 0 ? -6 : 1 - dia;
+  const lunesEstaSemana = new Date(hoy);
+  lunesEstaSemana.setDate(hoy.getDate() + diffALunes);
+  lunesEstaSemana.setHours(0, 0, 0, 0);
+  const martesSiguiente = new Date(lunesEstaSemana);
+  martesSiguiente.setDate(lunesEstaSemana.getDate() + 8); // +7 a la otra semana, +1 a martes
+  return martesSiguiente;
+}
+
+function formatearFechaParaSheet(d) {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
+function formatearFechaLegible(d) {
+  return d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function comprimirImagen(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 1024;
+        const scale = Math.min(1, maxW / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function nombreActual() {
+  const esAdmin = document.getElementById('es-admin').checked;
+  return (esAdmin ? document.getElementById('admin').value : document.getElementById('guardia').value).trim();
+}
+
+document.getElementById('btn-abrir-reporte').addEventListener('click', () => {
+  // Sistema
+  const selSistema = document.getElementById('r-sistema');
+  selSistema.innerHTML = SISTEMAS_REPORTE.map(s => `<option value="${s}">${s}</option>`).join('');
+
+  // Ubicación prellenada con el puesto actual (editable)
+  const match = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}').puestos?.find(p => p.Checkpoint === checkpointId);
+  document.getElementById('r-ubicacion').value = match ? match.Nombre : checkpointId;
+  document.getElementById('r-equipo').value = '';
+  document.getElementById('r-descripcion').value = '';
+  document.getElementById('r-prioridad').value = 'Media';
+  reporteFotos = [];
+  document.getElementById('reporte-fotos-preview').innerHTML = '';
+  reporteStatusEl.className = 'status';
+
+  const martes = calcularMartesSiguienteSemana();
+  document.getElementById('r-fecha-info').textContent =
+    `Se revisará el martes ${formatearFechaLegible(martes)}, en la reunión de Administración + Comité de Vigilancia.`;
+
+  modalReporte.classList.add('show');
+});
+
+document.getElementById('btn-cancelar-reporte').addEventListener('click', () => {
+  modalReporte.classList.remove('show');
+});
+
+document.getElementById('r-fotos').addEventListener('change', async (e) => {
+  if (!e.target.files || !e.target.files.length) return;
+  const preview = document.getElementById('reporte-fotos-preview');
+  for (const file of Array.from(e.target.files)) {
+    try {
+      const dataUrl = await comprimirImagen(file);
+      reporteFotos.push(dataUrl);
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      preview.appendChild(img);
+    } catch (err) { console.error('Error procesando foto:', err); }
+  }
+  e.target.value = '';
+});
+
+document.getElementById('btn-crear-reporte').addEventListener('click', async () => {
+  const equipo = document.getElementById('r-equipo').value.trim();
+  const descripcion = document.getElementById('r-descripcion').value.trim();
+  const ubicacion = document.getElementById('r-ubicacion').value.trim();
+  const nombre = nombreActual();
+
+  if (!nombre) {
+    reporteStatusEl.textContent = 'Selecciona tu nombre en el formulario de rondín antes de crear un reporte.';
+    reporteStatusEl.className = 'status error';
+    return;
+  }
+  if (!equipo || !descripcion || !ubicacion) {
+    reporteStatusEl.textContent = 'Completa Equipo, Descripción y Ubicación.';
+    reporteStatusEl.className = 'status error';
+    return;
+  }
+
+  const btnCrear = document.getElementById('btn-crear-reporte');
+  btnCrear.disabled = true;
+  btnCrear.textContent = reporteFotos.length ? `Subiendo ${reporteFotos.length} foto(s)…` : 'Guardando…';
+
+  const fechaProgramada = formatearFechaParaSheet(calcularMartesSiguienteSemana());
+
+  const datos = {
+    accion: 'crear_reporte',
+    sistema: document.getElementById('r-sistema').value,
+    equipo,
+    descripcion: `🛡️ [RONDÍN - SEGURIDAD] ${descripcion}`,
+    ubicacion,
+    reportadoPor: `${nombre} (Seguridad · Rondín)`,
+    estatus: 'ABIERTA',
+    prioridad: document.getElementById('r-prioridad').value,
+    fecha: fechaProgramada,
+    fotos: reporteFotos
+  };
+
+  try {
+    await fetch(URL_MANTENIMIENTO_PUENTE, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(datos)
+    });
+    reporteStatusEl.textContent = `✅ Reporte creado — se revisará el martes ${fechaProgramada}`;
+    reporteStatusEl.className = 'status ok';
+    setTimeout(() => { modalReporte.classList.remove('show'); }, 1800);
+  } catch (err) {
+    reporteStatusEl.textContent = `Error de conexión: ${err.message}`;
+    reporteStatusEl.className = 'status error';
+  } finally {
+    btnCrear.disabled = false;
+    btnCrear.textContent = 'Crear reporte';
+  }
+});
 </script>
 </body>
 </html>
